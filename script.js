@@ -1,51 +1,81 @@
 const yes = document.querySelector('#yes');
-const no = document.querySelector('#no');
-const result = document.querySelector('#result');
+const margin = 12;
+let x = 0;
+let y = 0;
+let vx = 165;
+let vy = 125;
+let pointer = { x: -1000, y: -1000 };
+let lastTime;
 
-// Координаты меняются сразу: курсор не успеет догнать кнопку по пути.
-function escape(pointerX, pointerY) {
-  const gap = 14;
-  const width = yes.offsetWidth;
-  const height = yes.offsetHeight;
-  const maxX = Math.max(gap, window.innerWidth - width - gap);
-  const maxY = Math.max(gap, window.innerHeight - height - gap);
-  const old = yes.getBoundingClientRect();
-  const noRect = no.getBoundingClientRect();
-  let best = { x: gap, y: gap, score: -Infinity };
-
-  // Выбираем случайную далёкую точку, не перекрывая кнопку «Нет».
-  for (let i = 0; i < 40; i++) {
-    const x = gap + Math.random() * (maxX - gap);
-    const y = gap + Math.random() * (maxY - gap);
-    if (x < noRect.right + 10 && x + width > noRect.left - 10 &&
-        y < noRect.bottom + 10 && y + height > noRect.top - 10) continue;
-    const distance = Math.hypot(x + width / 2 - pointerX, y + height / 2 - pointerY);
-    const travel = Math.hypot(x - old.left, y - old.top);
-    const score = distance + travel * 0.4;
-    if (score > best.score) best = { x, y, score };
-  }
-  yes.style.left = `${best.x}px`;
-  yes.style.top = `${best.y}px`;
+function bounds() {
+  return {
+    x: Math.max(margin, innerWidth - yes.offsetWidth - margin),
+    y: Math.max(margin, innerHeight - yes.offsetHeight - margin)
+  };
 }
 
-document.addEventListener('pointermove', (event) => {
-  const rect = yes.getBoundingClientRect();
-  if (event.clientX > rect.left - 55 && event.clientX < rect.right + 55 &&
-      event.clientY > rect.top - 55 && event.clientY < rect.bottom + 55) {
-    escape(event.clientX, event.clientY);
-  }
-});
+function draw() {
+  yes.style.transform = `translate(${x}px, ${y}px)`;
+}
 
+function escape() {
+  const max = bounds();
+  // Из случайных точек выбираем самую далёкую от курсора.
+  let distance = -1;
+  for (let i = 0; i < 20; i++) {
+    const nextX = margin + Math.random() * (max.x - margin);
+    const nextY = margin + Math.random() * (max.y - margin);
+    const nextDistance = Math.hypot(nextX + yes.offsetWidth / 2 - pointer.x, nextY + yes.offsetHeight / 2 - pointer.y);
+    if (nextDistance > distance) {
+      distance = nextDistance;
+      x = nextX;
+      y = nextY;
+    }
+  }
+  vx = (Math.random() > .5 ? 1 : -1) * 165;
+  vy = (Math.random() > .5 ? 1 : -1) * 125;
+  draw();
+}
+
+function avoidPointer() {
+  if (pointer.x > x - 60 && pointer.x < x + yes.offsetWidth + 60 &&
+      pointer.y > y - 60 && pointer.y < y + yes.offsetHeight + 60) escape();
+}
+
+document.addEventListener('pointermove', event => {
+  pointer = { x: event.clientX, y: event.clientY };
+  avoidPointer();
+});
+document.addEventListener('pointerleave', () => { pointer = { x: -1000, y: -1000 }; });
 for (const name of ['pointerenter', 'pointerdown', 'click', 'contextmenu']) {
-  yes.addEventListener(name, (event) => {
+  yes.addEventListener(name, event => {
     event.preventDefault();
-    escape(event.clientX, event.clientY);
+    pointer = { x: event.clientX, y: event.clientY };
+    escape();
   });
 }
 yes.addEventListener('focus', () => yes.blur());
-window.addEventListener('resize', () => escape(window.innerWidth / 2, window.innerHeight / 2));
+window.addEventListener('resize', escape);
 
-no.addEventListener('click', () => {
-  result.textContent = 'КВЕСТ ВЫПОЛНЕН. Роберт — легенда. +25 MMR, +100 уважения семьи. 🤝';
-  no.innerHTML = 'ЛЕГЕНДА ПОДТВЕРЖДЕНА <span>✓</span>';
-});
+// Постоянный полёт с отскоками от краёв, даже если мышь не двигается.
+function fly(time) {
+  const dt = lastTime === undefined ? 0 : Math.min((time - lastTime) / 1000, .04);
+  lastTime = time;
+  const max = bounds();
+  x += vx * dt;
+  y += vy * dt;
+  if (x <= margin || x >= max.x) vx *= -1;
+  if (y <= margin || y >= max.y) vy *= -1;
+  x = Math.max(margin, Math.min(x, max.x));
+  y = Math.max(margin, Math.min(y, max.y));
+  avoidPointer();
+  draw();
+  requestAnimationFrame(fly);
+}
+
+x = bounds().x * .75;
+y = bounds().y * .72;
+yes.style.left = '0';
+yes.style.top = '0';
+draw();
+requestAnimationFrame(fly);
